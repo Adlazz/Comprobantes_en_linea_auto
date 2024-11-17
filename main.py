@@ -488,7 +488,7 @@ def facturar(driver):
                 # Escribir concepto
                 text_box = wait.until(EC.presence_of_element_located((By.ID, "detalle_descripcion1")))
                 text_box.clear()
-                text_box.send_keys(f"Comisiones por cobranzas Mes de {factura.periodo} - Rendición N° {factura.rendicion}")
+                text_box.send_keys(f"Comisiones por cobranzas Mes de {factura.periodo} - Rendición N° {str(factura.rendicion).strip()}")
                 print(f"Concepto ingresado correctamente")
 
                 # Seleccionar Unidad de Medida
@@ -510,6 +510,37 @@ def facturar(driver):
                 text_box.send_keys(factura.importe)
                 print(f"Importe ingresado correctamente")
                 time.sleep(2)
+
+                # NUEVO CÓDIGO: Seleccionar IVA 21% solo si es factura B
+                if factura.cond_iva.upper() not in ['RI', 'M']:  # Si no es RI ni M, es factura B
+                    try:
+                        # Esperar a que el elemento esté presente
+                        select_iva = wait.until(EC.presence_of_element_located((By.ID, "detalle_tipo_iva1")))
+                        select_iva_dropdown = Select(select_iva)
+                        time.sleep(1)
+                        
+                        # Intentar selección directa del 21%
+                        try:
+                            select_iva_dropdown.select_by_value("5")  # 5 corresponde al 21%
+                            print("Se seleccionó IVA 21%")
+                        except Exception as e:
+                            print(f"Error al seleccionar IVA por método directo: {str(e)}")
+                            # Plan B: JavaScript
+                            script = """
+                                var select = document.getElementById("detalle_tipo_iva1");
+                                select.value = "5";
+                                var event = new Event('change');
+                                select.dispatchEvent(event);
+                                calcularSubtotalDetalle(1);
+                            """
+                            driver.execute_script(script)
+                            print("Se seleccionó IVA 21% usando JavaScript")
+                        
+                        time.sleep(2)  # Esperar a que se actualicen los cálculos
+                        
+                    except Exception as e:
+                        print(f"Error al seleccionar porcentaje de IVA: {str(e)}")
+                        driver.save_screenshot(f"error_seleccion_iva_{factura.cliente}.png")
 
                 # Hacer clic en el botón Continuar
                 try:
@@ -535,7 +566,6 @@ def facturar(driver):
                     driver.save_screenshot(f"error_continuar_{factura.cliente}.png")
                     raise  # Re-lanzar el error para que se maneje en el bloque try/except superior
 
-                # Hacer clic en el botón Confirmar Datos
                 # Hacer clic en el botón Confirmar Datos
                 try:
                     # Esperar a que el botón esté presente y sea clickeable
