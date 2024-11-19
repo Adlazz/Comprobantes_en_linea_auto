@@ -300,13 +300,49 @@ class InvoiceProcessor:
             if not self.alert_handler.handle_confirmation(self.driver):
                 logger.error("Error manejando ventana de confirmación")
                 return False
+            
+            # Espera más larga después de la confirmación
+            time.sleep(5)  # Aumentamos el tiempo de espera
+            logger.info("Esperando aparición del botón Imprimir...")
+
+            # Intentar encontrar y hacer clic en el botón Imprimir varias veces
+            max_intentos = 3
+            for intento in range(max_intentos):
+                try:
+                    # Esperar que el botón esté presente y clickeable
+                    imprimir_btn = self.wait.until(
+                        EC.element_to_be_clickable((
+                            By.XPATH, 
+                            "//input[@type='button' and @value='Imprimir...']"
+                        ))
+                    )
+                    
+                    # Hacer scroll al botón
+                    self.driver.execute_script("arguments[0].scrollIntoView(true);", imprimir_btn)
+                    time.sleep(1)
+                    
+                    # Click directo
+                    imprimir_btn.click()
+                    logger.info("Click exitoso en botón Imprimir")
+                    
+                    # Esperar a que comience la descarga
+                    time.sleep(3)
+                    break
+                    
+                except Exception as e:
+                    logger.warning(f"Intento {intento + 1} fallido para hacer clic en Imprimir: {str(e)}")
+                    if intento == max_intentos - 1:  # Si es el último intento
+                        logger.error("No se pudo hacer clic en el botón Imprimir después de varios intentos")
+                        self.driver.save_screenshot("error_imprimir.png")
+                        return False
+                    time.sleep(2)  # Esperar antes del siguiente intento
 
             # Esperar a que se descargue el archivo
             time.sleep(5)
 
             # Definir rutas
             downloads_folder = str(Path.home() / "Downloads")
-            destino_folder = "c:/Users/54370/Desktop"  # Ajusta esta ruta
+            destino_folder = "c:/Users/54370/Desktop"  # Ajusta esta ruta si es necesario
             
             try:
                 # Buscar el archivo PDF más reciente en Downloads
@@ -336,13 +372,14 @@ class InvoiceProcessor:
                 logger.error(f"Error manejando el archivo PDF: {str(e)}")
                 return False
 
-            # Click en Menú Principal
+            # Click en Menú Principal solo después de manejar el archivo
             return self.handler.safe_click(
                 (By.XPATH, "//input[@type='button' and @value='Menú Principal' and contains(@onclick, 'menu_ppal.jsp')]"),
                 js_fallback="parent.location.href='menu_ppal.jsp'",
                 description="Botón Menú Principal"
-        )
+            )
 
         except Exception as e:
             logger.error(f"Error en confirmación de factura: {str(e)}")
+            self.driver.save_screenshot("error_confirmacion.png")
             return False
