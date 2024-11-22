@@ -1,6 +1,7 @@
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.common.action_chains import ActionChains
 import logging
 import time
 import os
@@ -288,6 +289,10 @@ class InvoiceProcessor:
     def _confirm_invoice(self, factura):
         """Confirma y finaliza la factura, maneja el PDF descargado"""
         try:
+            # Definir rutas al inicio
+            downloads_folder = str(Path.home() / "Downloads")
+            destino_folder = str(Path.home() / "Desktop")  # Usar Path para mayor compatibilidad
+
             # Click en Confirmar Datos
             if not self.handler.safe_click(
                 (By.XPATH, "//input[@type='button' and @value='Confirmar Datos...' and @onclick='confirmar();']"),
@@ -300,86 +305,193 @@ class InvoiceProcessor:
             if not self.alert_handler.handle_confirmation(self.driver):
                 logger.error("Error manejando ventana de confirmación")
                 return False
-            
-            # Espera más larga después de la confirmación
-            time.sleep(5)  # Aumentamos el tiempo de espera
-            logger.info("Esperando aparición del botón Imprimir...")
+                
+            logger.info("Esperando a que la página se actualice después de la confirmación...")
+                
+            # Espera más larga y explícita para la actualización de la página
+            try:
+                self.wait.until(lambda driver: driver.execute_script("return document.readyState") == "complete")
+                logger.info("Página completamente cargada")
+            except:
+                logger.warning("No se pudo verificar el estado de carga de la página")
 
-            # Intentar encontrar y hacer clic en el botón Imprimir varias veces
-            max_intentos = 3
-            for intento in range(max_intentos):
-                try:
-                    # Esperar que el botón esté presente y clickeable
-                    imprimir_btn = self.wait.until(
-                        EC.element_to_be_clickable((
-                            By.XPATH, 
-                            "//input[@type='button' and @value='Imprimir...']"
-                        ))
-                    )
-                    
-                    # Hacer scroll al botón
-                    self.driver.execute_script("arguments[0].scrollIntoView(true);", imprimir_btn)
-                    time.sleep(1)
-                    
-                    # Click directo
-                    imprimir_btn.click()
-                    logger.info("Click exitoso en botón Imprimir")
-                    
-                    # Esperar a que comience la descarga
-                    time.sleep(3)
-                    break
-                    
-                except Exception as e:
-                    logger.warning(f"Intento {intento + 1} fallido para hacer clic en Imprimir: {str(e)}")
-                    if intento == max_intentos - 1:  # Si es el último intento
-                        logger.error("No se pudo hacer clic en el botón Imprimir después de varios intentos")
-                        self.driver.save_screenshot("error_imprimir.png")
-                        return False
-                    time.sleep(2)  # Esperar antes del siguiente intento
-
-            # Esperar a que se descargue el archivo
+            # Espera base más larga
             time.sleep(5)
 
-            # Definir rutas
-            downloads_folder = str(Path.home() / "Downloads")
-            destino_folder = "c:/Users/54370/Desktop"  # Ajusta esta ruta si es necesario
-            
-            try:
-                # Buscar el archivo PDF más reciente en Downloads
-                archivos = [f for f in os.listdir(downloads_folder) if f.endswith('.pdf')]
-                if not archivos:
-                    logger.error("No se encontró archivo PDF en Downloads")
-                    return False
+            # Verificar el HTML actual
+            page_source = self.driver.page_source
+            logger.info("Estructura actual de la página:")
+            logger.info(page_source)
+
+            # Lista reducida de localizadores más específicos
+            locators = [
+                (By.XPATH, "//input[@type='button' and @value='Imprimir...']"),  # Más específico
+                (By.XPATH, "//*[@id='botones_comprobante']/input[@type='button']"),  # Por ID y tipo
+                (By.XPATH, "//input[contains(@onclick, 'imprimirComprobante.do')]")  # Por onclick
+            ]
+
+            # Buscar todos los botones en la página
+            all_buttons = self.driver.find_elements(By.TAG_NAME, "input")
+            logger.info("Botones encontrados en la página:")
+            for btn in all_buttons:
+                try:
+                    btn_info = {
+                        'type': btn.get_attribute('type'),
+                        'value': btn.get_attribute('value'),
+                        'onclick': btn.get_attribute('onclick'),
+                        'id': btn.get_attribute('id'),
+                        'class': btn.get_attribute('class'),
+                        'is_displayed': btn.is_displayed(),
+                        'is_enabled': btn.is_enabled()
+                    }
+                    logger.info(f"Botón encontrado: {btn_info}")
+                except:
+                    continue
+
+            # Intentar la búsqueda del botón
+            max_intentos = 5
+            for intento in range(max_intentos):
+                try:
+                    logger.info(f"\nIntento {intento + 1} de encontrar el botón Imprimir")
                     
-                archivo_reciente = max([os.path.join(downloads_folder, f) for f in archivos], 
-                                    key=os.path.getctime)
+                    for locator in locators:
+                        try:
+                            logger.info(f"Probando localizador: {locator}")
+                            
+                            # Espera explícita más larga
+                            wait = WebDriverWait(self.driver, 10)
+                            imprimir_btn = wait.until(
+                                EC.presence_of_element_located(locator)
+                            )
+                            
+                            logger.info(f"Botón encontrado con localizador {locator}")
+                            logger.info(f"Atributos del botón:")
+                            logger.info(f"- Visible: {imprimir_btn.is_displayed()}")
+                            logger.info(f"- Habilitado: {imprimir_btn.is_enabled()}")
+                            logger.info(f"- HTML: {imprimir_btn.get_attribute('outerHTML')}")
+                            
+                            if not imprimir_btn.is_displayed():
+                                logger.info("Botón no visible, intentando siguiente localizador")
+                                continue
+                            
+                            # Scroll con más margen
+                            self.driver.execute_script("""
+                                arguments[0].scrollIntoView(true);
+                                window.scrollBy(0, -100);
+                            """, imprimir_btn)
+                            time.sleep(2)
+                            
+                            # Intentar click directo con espera explícita
+                            wait.until(EC.element_to_be_clickable(locator))
+                            
+                            try:
+                                logger.info("Intentando click directo...")
+                                imprimir_btn.click()
+                            except Exception as click_e:
+                                logger.warning(f"Click directo falló: {click_e}")
+                                
+                                try:
+                                    logger.info("Intentando click con JavaScript...")
+                                    onclick = imprimir_btn.get_attribute('onclick')
+                                    if onclick:
+                                        logger.info(f"Ejecutando onclick: {onclick}")
+                                        self.driver.execute_script(onclick)
+                                    else:
+                                        self.driver.execute_script("arguments[0].click();", imprimir_btn)
+                                except Exception as js_e:
+                                    logger.warning(f"Click JavaScript falló: {js_e}")
+                                    
+                                    try:
+                                        logger.info("Intentando click con Actions...")
+                                        ActionChains(self.driver).move_to_element(imprimir_btn).pause(1).click().perform()
+                                    except Exception as action_e:
+                                        logger.warning(f"Click Actions falló: {action_e}")
+                                        continue
+                            
+                            # Verificar si el click fue exitoso
+                            logger.info("Verificando si se inició la descarga...")
+                            if self._verify_download_started(downloads_folder):
+                                logger.info("¡Descarga iniciada correctamente!")
+                                time.sleep(5)
+                                
+                                # Procesar el archivo descargado
+                                if self._process_downloaded_file(downloads_folder, destino_folder, factura):
+                                    # Solo si todo el proceso fue exitoso, hacer click en Menú Principal
+                                    return self.handler.safe_click(
+                                        (By.XPATH, "//input[@value='Menú Principal']"),
+                                        js_fallback="parent.location.href='menu_ppal.jsp'",
+                                        description="Botón Menú Principal"
+                                    )
+                            else:
+                                logger.warning("No se detectó inicio de descarga")
+                                
+                        except Exception as e:
+                            logger.warning(f"Error con localizador {locator}: {str(e)}")
+                            continue
+                    
+                    time.sleep(2)
+                    
+                except Exception as e:
+                    logger.warning(f"Error en intento {intento + 1}: {str(e)}")
+                    if intento == max_intentos - 1:
+                        logger.error("No se pudo hacer click en Imprimir")
+                        self.driver.save_screenshot("error_imprimir.png")
+                        return False
 
-                # Crear nuevo nombre de archivo
-                nuevo_nombre = f"{factura.cliente} x Honorarios {factura.periodo} - Rendición N° {factura.rendicion}.pdf"
-                nuevo_nombre = nuevo_nombre.replace('/', '-').replace('\\', '-')  # Sanitizar nombre
-                
-                # Asegurar que existe la carpeta destino
-                os.makedirs(destino_folder, exist_ok=True)
-                
-                # Ruta completa del archivo destino
-                archivo_destino = os.path.join(destino_folder, nuevo_nombre)
-
-                # Mover y renombrar el archivo
-                shutil.move(archivo_reciente, archivo_destino)
-                logger.info(f"Archivo movido y renombrado exitosamente: {nuevo_nombre}")
-
-            except Exception as e:
-                logger.error(f"Error manejando el archivo PDF: {str(e)}")
-                return False
-
-            # Click en Menú Principal solo después de manejar el archivo
-            return self.handler.safe_click(
-                (By.XPATH, "//input[@type='button' and @value='Menú Principal' and contains(@onclick, 'menu_ppal.jsp')]"),
-                js_fallback="parent.location.href='menu_ppal.jsp'",
-                description="Botón Menú Principal"
-            )
+            return False
 
         except Exception as e:
             logger.error(f"Error en confirmación de factura: {str(e)}")
             self.driver.save_screenshot("error_confirmacion.png")
             return False
+
+    def _verify_download_started(self, downloads_folder):
+        """Verifica si la descarga comenzó"""
+        try:
+            # Obtener lista inicial de archivos
+            initial_files = set(os.listdir(downloads_folder))
+            
+            # Esperar hasta 10 segundos por un nuevo archivo
+            for _ in range(10):
+                time.sleep(1)
+                current_files = set(os.listdir(downloads_folder))
+                new_files = current_files - initial_files
+                
+                # Verificar si hay nuevos archivos PDF o archivos temporales de descarga
+                if any(f.endswith('.pdf') or f.endswith('.crdownload') for f in new_files):
+                    return True
+                    
+            return False
+        except Exception as e:
+            logger.error(f"Error verificando descarga: {str(e)}")
+            return False
+
+    def _process_downloaded_file(self, downloads_folder, destino_folder, factura):
+        """Procesa el archivo descargado"""
+        try:
+            # Buscar el archivo PDF más reciente
+            archivos = [f for f in os.listdir(downloads_folder) if f.endswith('.pdf')]
+            if not archivos:
+                raise Exception("No se encontró archivo PDF en Downloads")
+                
+            archivo_reciente = max([os.path.join(downloads_folder, f) for f in archivos], 
+                                key=os.path.getctime)
+
+            # Crear nuevo nombre de archivo
+            nuevo_nombre = f"{factura.cliente} x Honorarios {factura.periodo} - Rendición N° {factura.rendicion}.pdf"
+            nuevo_nombre = nuevo_nombre.replace('/', '-').replace('\\', '-')
+            
+            # Asegurar que existe la carpeta destino
+            os.makedirs(destino_folder, exist_ok=True)
+            
+            # Ruta completa del archivo destino
+            archivo_destino = os.path.join(destino_folder, nuevo_nombre)
+
+            # Mover y renombrar el archivo
+            shutil.move(archivo_reciente, archivo_destino)
+            logger.info(f"Archivo movido y renombrado exitosamente: {nuevo_nombre}")
+            return True
+
+        except Exception as e:
+            logger.error(f"Error procesando archivo descargado: {str(e)}")
+            raise

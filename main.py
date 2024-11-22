@@ -6,10 +6,14 @@ from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.ui import Select
 from selenium.common.exceptions import TimeoutException, NoAlertPresentException
+from pathlib import Path
 import time
 import random
 import keyboard  # Para detectar la tecla Esc
 from excel_handler import ExcelHandler, FacturaData 
+from invoice_processor import InvoiceProcessor
+from element_handler import ElementHandler  # Si no lo tienes ya importado
+from alert_handler import AlertHandler 
 
 def get_random_user_agent():
     user_agents = [
@@ -221,6 +225,14 @@ def login_afip(cuit, password):
 
 def facturar(driver):
     try:
+        # Primero definir wait
+        wait = WebDriverWait(driver, 10)
+
+        # Luego inicializar handlers con wait ya definido
+        element_handler = ElementHandler(driver, wait)
+        alert_handler = AlertHandler()
+        invoice_processor = InvoiceProcessor(driver, element_handler, alert_handler)
+
         # Instanciar el ExcelHandler
         excel_handler = ExcelHandler("facturador_test.xlsx")
         if not excel_handler.load_excel():
@@ -232,9 +244,6 @@ def facturar(driver):
             print("No hay facturas pendientes para procesar")
             return
 
-        # Asegurarse de que estamos en la ventana correcta
-        wait = WebDriverWait(driver, 10)
-        
         # Por cada factura pendiente
         for factura in facturas_pendientes:
             try:
@@ -453,7 +462,7 @@ def facturar(driver):
                 text_box.clear()
                 text_box.send_keys(factura.cuit)
                 print(f"CUIT ingresado: {factura.cuit}")
-                time.sleep(4)
+                time.sleep(8)
 
                 # Hacer click en checkbox Contado
                 checkbox = wait.until(EC.element_to_be_clickable((By.ID, "formadepago1")))
@@ -598,7 +607,93 @@ def facturar(driver):
                     print("No se pudo manejar la ventana de confirmación")
                     driver.save_screenshot(f"error_ventana_confirmacion_{factura.cliente}.png")
                     raise Exception("Error al manejar la ventana de confirmación")
+                
+                # Intentar hacer click en el botón Imprimir
+                try:
+                    print("Buscando botón Imprimir...")
+                    # Esperar a que la página se actualice
+                    wait.until(lambda d: d.execute_script("return document.readyState") == "complete")
+                    
+                    # Intentar diferentes localizadores para el botón imprimir
+                    locators = [
+                        "//input[@type='button' and @value='Imprimir...']",
+                        "//*[@id='botones_comprobante']/input",
+                        "//input[contains(@onclick, 'imprimirComprobante.do')]",
+                        "//input[@type='button'][contains(@value, 'Imprimir')]"
+                    ]
 
+                    imprimir_btn = None
+                    for xpath in locators:
+                        try:
+                            imprimir_btn = WebDriverWait(driver, 5).until(
+                                EC.presence_of_element_located((By.XPATH, xpath))
+                            )
+                            if imprimir_btn.is_displayed():
+                                print(f"Botón Imprimir encontrado con localizador: {xpath}")
+                                break
+                        except:
+                            continue
+
+                    if imprimir_btn and imprimir_btn.is_displayed():
+                        # Scroll al botón
+                        driver.execute_script("arguments[0].scrollIntoView(true);", imprimir_btn)
+                        time.sleep(1)
+
+                        try:
+                            print("Intentando click en botón Imprimir...")
+                            imprimir_btn.click()
+                        except:
+                            print("Click directo falló, intentando con JavaScript...")
+                            onclick = imprimir_btn.get_attribute('onclick')
+                            if onclick:
+                                driver.execute_script(onclick)
+                            else:
+                                driver.execute_script("arguments[0].click();", imprimir_btn)
+
+                        print("Click en Imprimir realizado")
+                        time.sleep(5)  # Esperar a que se genere el PDF
+                              
+                        # Usar los métodos del InvoiceProcessor para manejar el PDF
+                        downloads_folder = str(Path.home() / "Downloads")
+                        destino_folder = str(Path.home() / "Desktop")
+
+                        print("Verificando descarga del PDF...")
+                        max_intentos_descarga = 3
+                        for intento in range(max_intentos_descarga):
+                            try:
+                                if invoice_processor._verify_download_started(downloads_folder):
+                                    print("Descarga detectada, esperando que complete...")
+                                    time.sleep(5)  # Esperar a que se complete la descarga
+                                    
+                                    print("Intentando procesar el archivo...")
+                                    if invoice_processor._process_downloaded_file(downloads_folder, destino_folder, factura):
+                                        print("Archivo PDF procesado exitosamente")
+                                        break
+                                    else:
+                                        print("Error procesando el archivo PDF")
+                                        if intento == max_intentos_descarga - 1:
+                                            raise Exception("No se pudo procesar el PDF después de varios intentos")
+                                else:
+                                    print(f"Intento {intento + 1}: No se detectó la descarga aún")
+                                    if intento == max_intentos_descarga - 1:
+                                        raise Exception("No se detectó la descarga del PDF después de varios intentos")
+                                    time.sleep(2)
+                            except Exception as e:
+                                print(f"Error en intento {intento + 1} de procesar PDF: {str(e)}")
+                                if intento == max_intentos_descarga - 1:
+                                    raise
+
+                        # Solo si todo el proceso fue exitoso, hacer click en Menú Principal
+                        print("Procediendo a Menú Principal...")
+
+                    else:
+                        print("No se pudo encontrar el botón Imprimir")
+                        driver.save_screenshot("error_no_boton_imprimir.png")
+
+                except Exception as e:
+                    print(f"Error al intentar imprimir: {str(e)}")
+                    driver.save_screenshot("error_imprimir.png")
+                
                 # Hacer clic en el botón Menú Principal
                 try:
                     # Esperar a que el botón esté presente y sea clickeable
