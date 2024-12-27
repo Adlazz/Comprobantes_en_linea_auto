@@ -446,39 +446,72 @@ class InvoiceProcessor:
             return False
 
     def _verify_download_started(self, downloads_folder):
-        """Verifica si la descarga comenzó"""
+        """
+        Verifica si existe un nuevo archivo PDF en la carpeta de descargas.
+        """
+        logger.info("Buscando archivo PDF más reciente...")
+        
         try:
-            # Obtener lista inicial de archivos
-            initial_files = set(os.listdir(downloads_folder))
+            # Obtener todos los archivos PDF en la carpeta
+            pdf_files = [f for f in os.listdir(downloads_folder) if f.endswith('.pdf')]
             
-            # Esperar hasta 10 segundos por un nuevo archivo
-            for _ in range(10):
-                time.sleep(1)
-                current_files = set(os.listdir(downloads_folder))
-                new_files = current_files - initial_files
+            if not pdf_files:
+                logger.warning("No se encontraron archivos PDF en la carpeta de descargas")
+                return False
                 
-                # Verificar si hay nuevos archivos PDF o archivos temporales de descarga
-                if any(f.endswith('.pdf') or f.endswith('.crdownload') for f in new_files):
-                    return True
-                    
+            # Obtener el archivo más reciente
+            most_recent_file = max(
+                [os.path.join(downloads_folder, f) for f in pdf_files],
+                key=os.path.getmtime
+            )
+            
+            # Verificar si el archivo fue creado en los últimos 30 segundos
+            file_creation_time = os.path.getctime(most_recent_file)
+            current_time = time.time()
+            
+            if (current_time - file_creation_time) <= 30:  # 30 segundos de margen
+                logger.info(f"Archivo PDF reciente encontrado: {os.path.basename(most_recent_file)}")
+                return True
+                
+            logger.warning("No se encontraron archivos PDF recientes")
             return False
+            
         except Exception as e:
-            logger.error(f"Error verificando descarga: {str(e)}")
+            logger.error(f"Error verificando archivo PDF: {str(e)}")
             return False
 
     def _process_downloaded_file(self, downloads_folder, destino_folder, factura):
-        """Procesa el archivo descargado"""
+        """
+        Procesa el archivo PDF más reciente de la carpeta de descargas.
+        """
+        logger.info(f"Procesando archivo para {factura.cliente}")
+        
         try:
-            # Buscar el archivo PDF más reciente
-            archivos = [f for f in os.listdir(downloads_folder) if f.endswith('.pdf')]
-            if not archivos:
-                raise Exception("No se encontró archivo PDF en Downloads")
+            # Obtener el archivo PDF más reciente
+            pdf_files = [f for f in os.listdir(downloads_folder) if f.endswith('.pdf')]
+            
+            if not pdf_files:
+                logger.error("No se encontraron archivos PDF")
+                return False
                 
-            archivo_reciente = max([os.path.join(downloads_folder, f) for f in archivos], 
-                                key=os.path.getctime)
+            # Obtener el archivo más reciente
+            most_recent_file = max(
+                [os.path.join(downloads_folder, f) for f in pdf_files],
+                key=os.path.getmtime
+            )
+            
+            # Verificar que el archivo existe y tiene tamaño
+            if not os.path.exists(most_recent_file):
+                logger.error(f"Archivo no encontrado: {most_recent_file}")
+                return False
+                
+            if os.path.getsize(most_recent_file) == 0:
+                logger.error(f"Archivo vacío: {most_recent_file}")
+                return False
 
             # Crear nuevo nombre de archivo
-            nuevo_nombre = f"{factura.cliente} x Honorarios {factura.periodo} - Rendición N° {factura.rendicion}.pdf"
+            nuevo_nombre = (f"{factura.cliente} x Honorarios {factura.periodo} - "
+                        f"Rendición N° {str(factura.rendicion).rstrip('.0')}.pdf")
             nuevo_nombre = nuevo_nombre.replace('/', '-').replace('\\', '-')
             
             # Asegurar que existe la carpeta destino
@@ -487,11 +520,15 @@ class InvoiceProcessor:
             # Ruta completa del archivo destino
             archivo_destino = os.path.join(destino_folder, nuevo_nombre)
 
-            # Mover y renombrar el archivo
-            shutil.move(archivo_reciente, archivo_destino)
-            logger.info(f"Archivo movido y renombrado exitosamente: {nuevo_nombre}")
+            # Si existe un archivo con el mismo nombre en destino, eliminarlo
+            if os.path.exists(archivo_destino):
+                os.remove(archivo_destino)
+
+            # Mover el archivo
+            shutil.move(most_recent_file, archivo_destino)
+            logger.info(f"Archivo movido exitosamente a: {archivo_destino}")
             return True
 
         except Exception as e:
-            logger.error(f"Error procesando archivo descargado: {str(e)}")
-            raise
+            logger.error(f"Error procesando archivo: {str(e)}")
+            return False

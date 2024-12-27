@@ -655,32 +655,32 @@ def facturar(driver):
                               
                         # Usar los métodos del InvoiceProcessor para manejar el PDF
                         downloads_folder = str(Path.home() / "Downloads")
-                        destino_folder = str(Path.home() / "Desktop")
+                        destino_folder = str(Path.home() / "Desktop/Facturas_NOV")
 
-                        print("Verificando descarga del PDF...")
-                        max_intentos_descarga = 3
-                        for intento in range(max_intentos_descarga):
+                        print("Buscando archivo PDF...")
+                        max_intentos = 3
+                        for intento in range(max_intentos):
                             try:
                                 if invoice_processor._verify_download_started(downloads_folder):
-                                    print("Descarga detectada, esperando que complete...")
-                                    time.sleep(5)  # Esperar a que se complete la descarga
+                                    print("Archivo PDF encontrado, procesando...")
                                     
-                                    print("Intentando procesar el archivo...")
                                     if invoice_processor._process_downloaded_file(downloads_folder, destino_folder, factura):
                                         print("Archivo PDF procesado exitosamente")
                                         break
                                     else:
                                         print("Error procesando el archivo PDF")
-                                        if intento == max_intentos_descarga - 1:
-                                            raise Exception("No se pudo procesar el PDF después de varios intentos")
+                                        if intento == max_intentos - 1:
+                                            raise Exception("No se pudo procesar el PDF")
                                 else:
-                                    print(f"Intento {intento + 1}: No se detectó la descarga aún")
-                                    if intento == max_intentos_descarga - 1:
-                                        raise Exception("No se detectó la descarga del PDF después de varios intentos")
-                                    time.sleep(2)
+                                    print(f"Intento {intento + 1}: No se encontró archivo PDF reciente")
+                                    if intento == max_intentos - 1:
+                                        raise Exception("No se encontró el archivo PDF después de varios intentos")
+                                
+                                time.sleep(2)  # Breve pausa entre intentos
+                                
                             except Exception as e:
-                                print(f"Error en intento {intento + 1} de procesar PDF: {str(e)}")
-                                if intento == max_intentos_descarga - 1:
+                                print(f"Error en intento {intento + 1}: {str(e)}")
+                                if intento == max_intentos - 1:
                                     raise
 
                         # Solo si todo el proceso fue exitoso, hacer click en Menú Principal

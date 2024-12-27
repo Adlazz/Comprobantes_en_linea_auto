@@ -1,0 +1,16 @@
+2024-12-27 09:39:25,652 - WDM - INFO - ====== WebDriver manager ======
+2024-12-27 09:39:26,156 - WDM - INFO - Get LATEST chromedriver version for google-chrome
+2024-12-27 09:39:26,338 - WDM - INFO - Get LATEST chromedriver version for google-chrome
+2024-12-27 09:39:26,449 - WDM - INFO - Driver [C:\Users\usuario\.wdm\drivers\chromedriver\win64\131.0.6778.204\chromedriver-win32/chromedriver.exe] found in cache
+2024-12-27 10:38:37,389 - WDM - INFO - ====== WebDriver manager ======
+2024-12-27 10:38:37,930 - WDM - INFO - Get LATEST chromedriver version for google-chrome
+2024-12-27 10:38:38,125 - WDM - INFO - Get LATEST chromedriver version for google-chrome
+2024-12-27 10:38:38,248 - WDM - INFO - Driver [C:\Users\usuario\.wdm\drivers\chromedriver\win64\131.0.6778.204\chromedriver-win32/chromedriver.exe] found in cache
+2024-12-27 10:39:57,479 - invoice_processor - INFO - Buscando archivo PDF más reciente...
+2024-12-27 10:39:57,480 - invoice_processor - INFO - Archivo PDF reciente encontrado: 30714395609_001_00004_00003082.pdf
+2024-12-27 10:39:57,481 - invoice_processor - INFO - Procesando archivo para RUTA ONCE SRL
+2024-12-27 10:39:57,483 - invoice_processor - INFO - Archivo movido exitosamente a: C:\Users\usuario\Desktop\Facturas_NOV\RUTA ONCE SRL x Honorarios Diciembre 2024 - Rendición N° 11426.pdf
+2024-12-27 10:41:04,903 - invoice_processor - INFO - Buscando archivo PDF más reciente...
+2024-12-27 10:41:04,904 - invoice_processor - INFO - Archivo PDF reciente encontrado: 30714395609_001_00004_00003083.pdf
+2024-12-27 10:41:04,904 - invoice_processor - INFO - Procesando archivo para RUTA ONCE SRL
+2024-12-27 10:41:04,905 - invoice_processor - INFO - Archivo movido exitosamente a: C:\Users\usuario\Desktop\Facturas_NOV\RUTA ONCE SRL x Honorarios Diciembre 2024 - Rendición N° 11407.pdf
